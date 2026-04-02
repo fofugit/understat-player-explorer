@@ -1,7 +1,7 @@
 streamlit
 understat
-aiohttp
-nest_asyncio
+aiohttp>=3.9.0
 pandas
 numpy
 matplotlib
+nest_asyncio

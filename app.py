@@ -53,16 +53,28 @@ def run_async(coro):
 async def fetch_league_players_and_teams_one(league_code: str, season_start: int):
     async with aiohttp.ClientSession() as session:
         u = Understat(session)
-        players = await u.get_league_players(league_code, season_start)
-        teams = await u.get_teams(league_code, season_start)
+        try:
+            players = await u.get_league_players(league_code, season_start)
+        except Exception:
+            players = []
+        try:
+            teams = await u.get_teams(league_code, season_start)
+        except Exception:
+            teams = []
     return players, teams
 
 
 async def fetch_player_bundle(player_id: int):
     async with aiohttp.ClientSession() as session:
         u = Understat(session)
-        shots = await u.get_player_shots(player_id)
-        matches = await u.get_player_matches(player_id)
+        try:
+            shots = await u.get_player_shots(player_id)
+        except Exception:
+            shots = []
+        try:
+            matches = await u.get_player_matches(player_id)
+        except Exception:
+            matches = []
         try:
             grouped = await u.get_player_grouped_stats(player_id)
         except Exception:
@@ -460,22 +472,34 @@ def load_roster_cached(league_code, season_choice):
         for yr in SEASON_START_YEARS:
             try:
                 players_raw, _ = run_async(fetch_league_players_and_teams_one(league_code, int(yr)))
-                players_df = clean_players_df(players_raw, league_code, int(yr))
-                if not players_df.empty:
-                    roster_parts.append(players_df)
             except Exception:
+                players_raw = []
+            if not players_raw:
                 continue
+            players_df = clean_players_df(players_raw, league_code, int(yr))
+            if not players_df.empty:
+                roster_parts.append(players_df)
         if roster_parts:
             return pd.concat(roster_parts, ignore_index=True).drop_duplicates()
         return pd.DataFrame()
 
-    players_raw, _ = run_async(fetch_league_players_and_teams_one(league_code, int(season_choice)))
+    try:
+        players_raw, _ = run_async(fetch_league_players_and_teams_one(league_code, int(season_choice)))
+    except Exception:
+        players_raw = []
+
+    if not players_raw:
+        return pd.DataFrame()
+
     return clean_players_df(players_raw, league_code, int(season_choice))
 
 
 @st.cache_data(show_spinner=False)
 def load_player_data_cached(player_id):
-    shots_raw, matches_raw, _ = run_async(fetch_player_bundle(int(player_id)))
+    try:
+        shots_raw, matches_raw, _ = run_async(fetch_player_bundle(int(player_id)))
+    except Exception:
+        shots_raw, matches_raw = [], []
     shots_df = clean_shots_df(shots_raw)
     matches_df = clean_matches_df(matches_raw)
     return shots_df, matches_df
@@ -503,7 +527,11 @@ with st.spinner("Loading roster..."):
     roster_df = load_roster_cached(league_code, season_choice)
 
 if roster_df.empty:
-    st.error("No roster data could be loaded for this selection.")
+    st.error(
+        "No roster data could be loaded for this selection. "
+        "This usually means the Understat site structure changed or that the package could not parse the page. "
+        "Try another league/season, or redeploy later."
+    )
     st.stop()
 
 team_options = ["All teams"] + build_team_list_from_roster(roster_df)
@@ -570,7 +598,7 @@ if load_clicked:
                     ax.set_title("Shot results")
                     ax.set_xlabel("Result")
                     ax.set_ylabel("Count")
-                    ax.tick_params(axis="x", rotation=45)
+                    plt.xticks(rotation=45, ha="right")
                     st.pyplot(fig)
 
         if "situation" in current_table.columns:
@@ -581,18 +609,17 @@ if load_clicked:
                 ax.set_title("Shot situations")
                 ax.set_xlabel("Situation")
                 ax.set_ylabel("Count")
-                ax.tick_params(axis="x", rotation=45)
+                plt.xticks(rotation=45, ha="right")
                 st.pyplot(fig)
 
         st.subheader("Shot-level table")
-        st.write(f"Rows: {len(current_table):,}")
         st.dataframe(current_table, use_container_width=True, hide_index=True)
 
-        csv_bytes = current_table.to_csv(index=False).encode("utf-8")
+        csv_data = current_table.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="Download shot data as CSV",
-            data=csv_bytes,
-            file_name=f"{player_name.replace(' ', '_')}_{league_code}_{str(season_choice).replace(' ', '_')}_shot.csv",
+            label="Download shot-level CSV",
+            data=csv_data,
+            file_name=f"{player_name.replace(' ', '_')}_{league_code}_{season_choice}_shot.csv",
             mime="text/csv",
         )
 
@@ -624,15 +651,12 @@ if load_clicked:
                 st.pyplot(fig)
 
         st.subheader("Match-level table")
-        st.write(f"Rows: {len(current_table):,}")
         st.dataframe(current_table, use_container_width=True, hide_index=True)
 
-        csv_bytes = current_table.to_csv(index=False).encode("utf-8")
+        csv_data = current_table.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="Download match data as CSV",
-            data=csv_bytes,
-            file_name=f"{player_name.replace(' ', '_')}_{league_code}_{str(season_choice).replace(' ', '_')}_match.csv",
+            label="Download match-level CSV",
+            data=csv_data,
+            file_name=f"{player_name.replace(' ', '_')}_{league_code}_{season_choice}_match.csv",
             mime="text/csv",
         )
-else:
-    st.info("Choose your settings, then click 'Load player data'.")

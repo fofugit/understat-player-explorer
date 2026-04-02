@@ -1,0 +1,7 @@
+streamlit
+understat
+aiohttp
+nest_asyncio
+pandas
+numpy
+matplotlib

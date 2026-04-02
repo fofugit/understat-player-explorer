@@ -1,6 +1,6 @@
 streamlit
 understat
-aiohttp>=3.9.0
+aiohttp>=3.9.5
 pandas
 numpy
 matplotlib
